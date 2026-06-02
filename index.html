@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentWatch — Real File Agent Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06080d;--surface:#0d1117;--surface2:#161b24;--surface3:#1c2333;
+  --red:#ff3b3b;--red-dim:rgba(255,59,59,0.12);--red-border:rgba(255,59,59,0.30);
+  --green:#00d084;--green-dim:rgba(0,208,132,0.10);--green-border:rgba(0,208,132,0.28);
+  --amber:#ffb800;--amber-dim:rgba(255,184,0,0.10);--amber-border:rgba(255,184,0,0.28);
+  --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.10);--blue-border:rgba(59,130,246,0.28);
+  --text:#e8ecf4;--muted:#4a5568;--muted2:#718096;
+  --mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;--display:'Bebas Neue',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.app{display:grid;grid-template-columns:220px 1fr;height:100vh;position:relative;z-index:1}
+
+/* SIDEBAR */
+.sidebar{background:var(--surface);border-right:1px solid rgba(255,255,255,0.05);display:flex;flex-direction:column;overflow:hidden}
+.brand{padding:1rem;border-bottom:1px solid rgba(255,255,255,0.05)}
+.brand-row{display:flex;align-items:center;gap:9px;margin-bottom:3px}
+.brand-hex{width:30px;height:30px;flex-shrink:0}
+.brand-name{font-family:var(--display);font-size:18px;letter-spacing:.05em;line-height:1}
+.brand-tag{font-size:9px;color:var(--muted2);letter-spacing:.1em;text-transform:uppercase;margin-left:39px}
+.agent-badge{display:flex;align-items:center;gap:6px;background:rgba(0,208,132,0.08);border:1px solid var(--green-border);border-radius:6px;padding:5px 9px;margin-top:8px}
+.ab-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ab-text{font-size:10px;color:var(--green);font-family:var(--mono)}
+.nav{padding:.4rem;display:flex;flex-direction:column;gap:2px}
+.nb{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;border:none;background:none;color:var(--muted2);font-family:var(--sans);font-size:12px;cursor:pointer;width:100%;text-align:left;transition:all .15s}
+.nb:hover{background:var(--surface2);color:var(--text)}
+.nb.active{background:var(--surface3);color:var(--text);font-weight:500}
+.nb .nd{width:5px;height:5px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.nb.active .nd{background:var(--red);box-shadow:0 0 5px var(--red)}
+.workspace-info{padding:.75rem 1rem;border-top:1px solid rgba(255,255,255,0.05)}
+.wi-label{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono);margin-bottom:6px}
+.wi-path{font-size:9px;color:var(--green);font-family:var(--mono);word-break:break-all;line-height:1.5;margin-bottom:8px}
+.wi-files{display:flex;flex-direction:column;gap:3px}
+.wf{font-size:10px;color:var(--muted2);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between}
+.wf:last-child{border-bottom:none}
+.btn-reset{width:100%;padding:6px;background:var(--surface2);border:1px solid rgba(255,255,255,0.08);border-radius:5px;color:var(--muted2);font-size:10px;cursor:pointer;font-family:var(--sans);margin-top:6px;transition:all .15s}
+.btn-reset:hover{color:var(--text);border-color:var(--amber-border)}
+.ex-section{padding:.6rem 1rem;border-top:1px solid rgba(255,255,255,0.05);flex:1;overflow-y:auto}
+.ex-label{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono);margin-bottom:6px}
+.ex-item{font-size:10px;color:var(--muted2);padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;transition:color .15s;line-height:1.4}
+.ex-item:hover{color:var(--text)}
+.ex-item:last-child{border-bottom:none}
+.ex-danger{color:rgba(255,59,59,0.6)}
+.ex-danger:hover{color:var(--red)}
+.sb-status{padding:.6rem 1rem;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:7px}
+.sdot{width:6px;height:6px;border-radius:50%;animation:pulse 2s infinite}
+.stxt{font-size:10px;color:var(--muted2);font-family:var(--mono)}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;overflow:hidden}
+.view{display:none;flex-direction:column;height:100%;overflow:hidden}
+.view.active{display:flex}
+#view-task{display:none;grid-template-columns:340px 1fr;height:100%}
+#view-task.active{display:grid}
+
+/* TASK PANEL */
+.task-panel{border-right:1px solid rgba(255,255,255,0.05);display:flex;flex-direction:column;background:var(--surface);overflow-y:auto}
+.tp-header{padding:1.1rem 1.1rem .9rem;border-bottom:1px solid rgba(255,255,255,0.05)}
+.tp-title{font-family:var(--display);font-size:24px;letter-spacing:.04em;margin-bottom:4px}
+.tp-sub{font-size:11px;color:var(--muted2);line-height:1.5}
+.task-input-area{padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.7rem;flex:1}
+.in-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+textarea#task-input{width:100%;height:90px;background:var(--surface2);border:1px solid rgba(255,255,255,0.08);border-radius:7px;padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:13px;resize:none;outline:none;line-height:1.5;transition:border-color .2s}
+textarea#task-input:focus{border-color:var(--green-border)}
+textarea#task-input::placeholder{color:var(--muted)}
+.btn-submit{width:100%;padding:11px;background:linear-gradient(135deg,#00d084,#0891b2);border:none;border-radius:7px;color:white;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn-submit:hover{opacity:.9}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed}
+.real-badge{background:rgba(0,208,132,0.08);border:1px solid var(--green-border);border-radius:7px;padding:10px 12px}
+.rb-title{font-size:11px;font-weight:600;color:var(--green);margin-bottom:6px}
+.rb-item{display:flex;align-items:flex-start;gap:7px;font-size:10px;color:var(--muted2);margin-bottom:5px;line-height:1.4}
+.rb-num{font-family:var(--mono);font-size:9px;color:var(--muted);flex-shrink:0;padding-top:1px}
+
+/* RESULT PANEL */
+.result-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.result-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;color:var(--muted);text-align:center;padding:2rem}
+.re-icon{font-size:36px;opacity:.3}
+.re-title{font-size:14px;color:var(--muted2)}
+.re-sub{font-size:11px;line-height:1.6;max-width:320px}
+.loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px}
+.loading-spinner{width:36px;height:36px;border:2px solid rgba(255,255,255,0.05);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:12px;color:var(--muted2);font-family:var(--mono)}
+.loading-sub{font-size:10px;color:var(--muted);font-family:var(--mono)}
+
+/* VERDICT */
+.verdict-bar{padding:1.1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:1rem;flex-shrink:0}
+.vi{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.vi-blocked{background:var(--red-dim);border:1px solid var(--red-border)}
+.vi-review{background:var(--amber-dim);border:1px solid var(--amber-border)}
+.vi-allowed{background:var(--green-dim);border:1px solid var(--green-border)}
+.vl{font-family:var(--display);font-size:28px;letter-spacing:.06em;line-height:1;margin-bottom:3px}
+.vl-blocked{color:var(--red)}.vl-allowed{color:var(--green)}.vl-review{color:var(--amber)}
+.vsub{font-size:11px;color:var(--muted2);line-height:1.4}
+.risk-num{font-family:var(--display);font-size:32px;text-align:right;flex-shrink:0}
+.real-action-box{margin:0 1.4rem 1rem;background:var(--blue-dim);border:1px solid var(--blue-border);border-radius:8px;padding:10px 14px}
+.rab-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--blue);text-transform:uppercase;margin-bottom:4px}
+.rab-action{font-size:13px;color:var(--text);font-weight:500;margin-bottom:3px}
+.rab-proof{font-size:10px;color:var(--muted2);font-family:var(--mono)}
+.result-body{flex:1;overflow-y:auto;padding:0 1.4rem 1.4rem}
+.rs{margin-bottom:1rem}
+.rs-label{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:7px}
+.rs-box{background:var(--surface2);border:1px solid rgba(255,255,255,0.05);border-radius:7px;padding:11px 13px;font-size:12px;color:var(--text);line-height:1.5}
+.rs-box.task-box{font-size:13px;font-weight:500;border-color:rgba(0,208,132,0.2)}
+.rs-box.blocked-box{background:var(--red-dim);border-color:var(--red-border);color:var(--red);font-family:var(--mono);font-size:11px;line-height:1.6}
+.exec-result{background:var(--surface2);border:1px solid var(--green-border);border-radius:7px;padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto}
+.exec-result table{width:100%;border-collapse:collapse}
+.exec-result th{text-align:left;color:var(--green);border-bottom:1px solid rgba(255,255,255,0.08);padding:4px 8px}
+.exec-result td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,0.03);color:var(--muted2)}
+.steps{display:flex;flex-direction:column;gap:5px}
+.step{display:grid;grid-template-columns:22px 1fr;gap:9px;padding:9px 11px;background:var(--surface2);border:1px solid rgba(255,255,255,0.04);border-radius:7px;animation:fadeIn .3s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
+.step-num{font-family:var(--mono);font-size:10px;color:var(--muted);padding-top:1px}
+.step-text{font-size:11px;color:var(--text);line-height:1.45}
+.flags{display:flex;flex-direction:column;gap:5px}
+.flag{display:flex;align-items:flex-start;gap:9px;padding:9px 12px;border-radius:7px;animation:fadeIn .3s ease both}
+.flag-critical{background:var(--red-dim);border:1px solid var(--red-border)}
+.flag-high{background:var(--amber-dim);border:1px solid var(--amber-border)}
+.flag-icon{font-size:13px;flex-shrink:0;margin-top:1px}
+.flag-text{font-size:11px;color:var(--text);line-height:1.4}
+.flag-sev{font-size:9px;font-family:var(--mono);letter-spacing:.06em;margin-top:2px}
+.flag-sev.critical{color:var(--red)}.flag-sev.high{color:var(--amber)}
+.review-actions{display:flex;gap:10px;margin-bottom:1rem;padding:1rem;background:var(--amber-dim);border:1px solid var(--amber-border);border-radius:8px;align-items:center}
+.review-msg{font-size:12px;color:var(--amber);flex:1;line-height:1.5;font-family:var(--mono)}
+.btn-approve{padding:9px 16px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:6px;color:var(--green);font-size:12px;cursor:pointer;font-family:var(--sans);font-weight:500}
+.btn-reject{padding:9px 16px;background:var(--red-dim);border:1px solid var(--red-border);border-radius:6px;color:var(--red);font-size:12px;cursor:pointer;font-family:var(--sans);font-weight:500}
+.feedback-row{display:flex;gap:10px;margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.05);align-items:center}
+.fb-label{font-size:11px;color:var(--muted2);flex:1}
+.btn-fb-y{padding:7px 14px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:6px;color:var(--green);font-size:12px;cursor:pointer;font-family:var(--sans)}
+.btn-fb-n{padding:7px 14px;background:var(--red-dim);border:1px solid var(--red-border);border-radius:6px;color:var(--red);font-size:12px;cursor:pointer;font-family:var(--sans)}
+
+/* HISTORY */
+.vh{padding:.9rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.vht{font-family:var(--display);font-size:20px;letter-spacing:.05em}
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,0.04);flex-shrink:0}
+.sb2{background:var(--surface);padding:.9rem 1.1rem}
+.sb2-val{font-family:var(--display);font-size:32px;letter-spacing:.02em;margin-bottom:2px}
+.sb2-label{font-size:10px;color:var(--muted2)}
+.hfeed{flex:1;overflow-y:auto;padding:1rem 1.4rem}
+.hitem{background:var(--surface2);border:1px solid rgba(255,255,255,0.05);border-radius:7px;padding:10px 12px;margin-bottom:7px;animation:fadeIn .25s ease}
+.hitem-top{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.hpill{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:20px;font-weight:600;letter-spacing:.05em}
+.hp-b{background:var(--red-dim);color:var(--red);border:1px solid var(--red-border)}
+.hp-r{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber-border)}
+.hp-a{background:var(--green-dim);color:var(--green);border:1px solid var(--green-border)}
+.htime{font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:auto}
+.htask{font-size:12px;color:var(--text);margin-bottom:3px;line-height:1.3}
+.haction{font-size:10px;color:var(--blue);font-family:var(--mono)}
+.hflag{font-size:10px;color:var(--muted2)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:9px 18px;background:var(--surface2);border:1px solid rgba(255,255,255,0.08);border-radius:7px;font-size:12px;font-family:var(--mono);pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;z-index:9999}
+.toast.show{opacity:1}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+
+/* ── Mic button ─────────────────────────────────────────── */
+.mic-row { display:flex; gap:8px; align-items:center; margin-bottom:4px; }
+.btn-mic {
+  width:42px; height:42px; flex-shrink:0;
+  background:var(--surface2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:7px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:18px;
+  transition:all .2s;
+}
+.btn-mic:hover { background:var(--surface3); }
+.btn-mic.listening {
+  background:var(--red-dim);
+  border-color:var(--red-border);
+  animation:micPulse 1s infinite;
+}
+@keyframes micPulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(255,59,59,0.5); }
+  50%      { box-shadow:0 0 0 8px rgba(255,59,59,0); }
+}
+.mic-hint {
+  font-size:10px; color:var(--muted); font-family:var(--mono); flex:1;
+  transition:color .2s;
+}
+.mic-hint.active { color:var(--red); }
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-row">
+      <div class="brand-hex">
+        <svg viewBox="0 0 30 30" fill="none">
+          <path d="M15 2L28 8.5V21.5L15 28L2 21.5V8.5L15 2Z" stroke="#ff3b3b" stroke-width="1.5" fill="rgba(255,59,59,0.08)"/>
+          <circle cx="15" cy="15" r="4" fill="#ff3b3b"/>
+        </svg>
+      </div>
+      <div class="brand-name">AGENT<br>WATCH</div>
+    </div>
+    <div class="brand-tag">Real File Monitor</div>
+    <div class="agent-badge">
+      <div class="ab-dot"></div>
+      <span class="ab-text">Groq Llama3 — Live</span>
+    </div>
+  </div>
+  <nav class="nav">
+    <button class="nb active" data-view="task"><span class="nd"></span> Monitor Agent</button>
+    <button class="nb" data-view="history"><span class="nd"></span> History</button>
+  </nav>
+  <div class="workspace-info">
+    <div class="wi-label">Workspace — real files</div>
+    <div class="wi-path" id="ws-path">Desktop/AgentWatch_Workspace</div>
+    <div class="wi-files" id="ws-files"><div class="wf"><span>Loading...</span></div></div>
+    <button class="btn-reset" onclick="resetWorkspace()">↺ Reset workspace files</button>
+  </div>
+  <div class="ex-section">
+    <div class="ex-label" style="color:var(--green)">✓ Safe tasks</div>
+    <div id="safe-ex"></div>
+    <div class="ex-label" style="color:var(--red);margin-top:10px">⛔ Dangerous tasks</div>
+    <div id="danger-ex"></div>
+  </div>
+  <div class="sb-status">
+    <div class="sdot" id="status-dot" style="background:var(--muted)"></div>
+    <span class="stxt" id="status-text">Connecting...</span>
+  </div>
+</aside>
+
+<main class="main">
+  <!-- TASK VIEW -->
+  <div class="view active" id="view-task">
+    <div class="task-panel">
+      <div class="tp-header">
+        <div class="tp-title">GIVE AGENT A TASK</div>
+        <div class="tp-sub">A real Groq AI processes your task. AgentWatch reads its reasoning and blocks dangerous actions before they happen.</div>
+      </div>
+      <div class="task-input-area">
+        <div>
+          <div class="in-label">Your task</div>
+          <textarea id="task-input" placeholder="e.g. Delete all log files&#10;or&#10;Read the employees file&#10;or&#10;List all files"></textarea>
+        </div>
+        <div class="mic-row">
+          <button class="btn-mic" id="btn-mic" onclick="toggleMic()" title="Click to speak your task">🎤</button>
+          <span class="mic-hint" id="mic-hint">Click 🎤 or press Ctrl+Enter</span>
+        </div>
+        <button class="btn-submit" id="submit-btn" onclick="submitTask()">⚡ Execute — Watch AgentWatch</button>
+        <div class="real-badge">
+          <div class="rb-title">This is REAL — here is what actually happens:</div>
+          <div class="rb-item"><span class="rb-num">1</span> Ollama understands your task</div>
+          <div class="rb-item"><span class="rb-num">2</span> AgentWatch maps it to a real file operation</div>
+          <div class="rb-item"><span class="rb-num">3</span> Surveillance engine scores the risk</div>
+          <div class="rb-item"><span class="rb-num">4</span> BLOCK → files untouched, open Explorer to verify</div>
+          <div class="rb-item"><span class="rb-num">5</span> ALLOW → operation executes, see real result</div>
+        </div>
+      </div>
+    </div>
+    <div class="result-panel" id="result-panel">
+      <div class="result-empty">
+        <div class="re-icon">◎</div>
+        <div class="re-title">Waiting for a task</div>
+        <div class="re-sub">Type a task on the left. The agent will actually try to do it. AgentWatch intercepts dangerous operations before they happen.</div>
+        <div class="re-sub" style="margin-top:8px;color:var(--green);font-family:var(--mono);font-size:10px">Open File Explorer → Desktop → AgentWatch_Workspace<br>Watch the files stay safe when blocked.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY VIEW -->
+  <div class="view" id="view-history">
+    <div class="vh">
+      <div class="vht">HISTORY</div>
+      <div style="font-size:11px;color:var(--muted);font-family:var(--mono)" id="ws-label">Workspace: Desktop/AgentWatch_Workspace</div>
+    </div>
+    <div class="stats-bar">
+      <div class="sb2"><div class="sb2-val" id="h-total" style="color:var(--text)">0</div><div class="sb2-label">Total tasks</div></div>
+      <div class="sb2"><div class="sb2-val" id="h-blocked" style="color:var(--red)">0</div><div class="sb2-label">Blocked — files safe</div></div>
+      <div class="sb2"><div class="sb2-val" id="h-flagged" style="color:var(--amber)">0</div><div class="sb2-label">Flagged for review</div></div>
+      <div class="sb2"><div class="sb2-val" id="h-allowed" style="color:var(--green)">0</div><div class="sb2-label">Allowed — executed</div></div>
+    </div>
+    <div class="hfeed" id="hfeed">
+      <div style="color:var(--muted);font-size:12px;text-align:center;padding:3rem">No tasks yet. Monitor some agent actions first.</div>
+    </div>
+  </div>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1') ? 'http://localhost:8000' : window.location.origin;
+let currentTaskId = null;
+let localStats = {total:0,blocked:0,flagged:0,allowed:0};
+let localHistory = [];
+
+// Navigation
+document.querySelectorAll('.nb').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-'+btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'history') refreshHistory();
+  });
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  checkStatus();
+  loadExamples();
+  loadWorkspace();
+});
+
+async function checkStatus() {
+  try {
+    const res = await fetch(API+'/health');
+    const data = await res.json();
+    setStatus(data.ollama==='running'?'var(--green)':'var(--amber)',
+              data.ollama==='running'?'Connected':'Ollama starting...');
+    if (data.workspace) {
+      document.getElementById('ws-path').textContent = data.workspace;
+      document.getElementById('ws-label').textContent = 'Workspace: '+data.workspace;
+    }
+  } catch(e) { setStatus('var(--red)','Backend offline'); }
+}
+
+function setStatus(color,text) {
+  const dot = document.getElementById('status-dot');
+  dot.style.background = color;
+  dot.style.boxShadow = '0 0 5px '+color;
+  document.getElementById('status-text').textContent = text;
+}
+
+async function loadWorkspace() {
+  try {
+    const res = await fetch(API+'/api/workspace');
+    const data = await res.json();
+    if (data.workspace) document.getElementById('ws-path').textContent = data.workspace;
+    if (data.files && data.files.files) {
+      document.getElementById('ws-files').innerHTML = data.files.files.map(f =>
+        `<div class="wf"><span>${esc(f.name)}</span><span style="color:var(--muted);font-family:var(--mono)">${(f.size_bytes/1024).toFixed(1)}KB</span></div>`
+      ).join('');
+    }
+  } catch(e) {}
+}
+
+async function resetWorkspace() {
+  try {
+    await fetch(API+'/api/workspace/reset', {method:'POST'});
+    await loadWorkspace();
+    toast('Workspace reset with original files', 'var(--green)');
+  } catch(e) { toast('Reset failed — is backend running?', 'var(--red)'); }
+}
+
+async function loadExamples() {
+  try {
+    const res = await fetch(API+'/api/examples');
+    const data = await res.json();
+    document.getElementById('safe-ex').innerHTML = data.safe_examples.map(e =>
+      `<div class="ex-item" onclick="useEx('${e.replace(/'/g,"\\'")}')">${e}</div>`).join('');
+    document.getElementById('danger-ex').innerHTML = data.dangerous_examples.map(e =>
+      `<div class="ex-item ex-danger" onclick="useEx('${e.replace(/'/g,"\\'")}')">${e}</div>`).join('');
+  } catch(e) {}
+}
+
+function useEx(text) {
+  document.getElementById('task-input').value = text;
+  document.getElementById('task-input').focus();
+}
+
+document.getElementById('task-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey) submitTask();
+});
+
+async function submitTask() {
+  const task = document.getElementById('task-input').value.trim();
+  if (!task) { toast('Enter a task first', 'var(--amber)'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Agent working...';
+
+  document.getElementById('result-panel').innerHTML = `
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Ollama understanding task...</div>
+      <div class="loading-sub">AgentWatch intercepting before execution</div>
+    </div>`;
+
+  try {
+    const res = await fetch(API+'/api/task', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({task})
+    });
+    const data = await res.json();
+    if (data.error) { showError(data.error, data.hint); return; }
+    currentTaskId = data.task_id;
+    renderResult(data);
+    updateStats(data);
+    addHistory(data);
+    await loadWorkspace();
+    toast(
+      data.blocked ? '⛔ BLOCKED — files are safe' :
+      data.decision === 'REVIEW' ? '⚠ Flagged for review' : '✓ Executed — check File Explorer',
+      data.blocked ? 'var(--red)' : data.decision === 'REVIEW' ? 'var(--amber)' : 'var(--green)'
+    );
+  } catch(e) {
+    showError('Cannot connect to backend.', 'Make sure backend is running: py backend.py');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Execute — Watch AgentWatch';
+  }
+}
+
+function renderResult(data) {
+  const isBlocked = data.blocked;
+  const isReview = data.decision === 'REVIEW';
+  const vText = isBlocked ? 'ACTION BLOCKED' : isReview ? 'FLAGGED FOR REVIEW' : 'ACTION EXECUTED';
+  const vCls = isBlocked ? 'vl-blocked' : isReview ? 'vl-review' : 'vl-allowed';
+  const iCls = isBlocked ? 'vi-blocked' : isReview ? 'vi-review' : 'vi-allowed';
+  const icon = isBlocked ? '⛔' : isReview ? '⚠' : '✓';
+  const riskColor = data.risk_score >= 0.6 ? 'var(--red)' : data.risk_score >= 0.3 ? 'var(--amber)' : 'var(--green)';
+
+  if (isReview) window.pendingReviewData = data.task_id;
+
+  const reasoningLines = (data.reasoning||'').split('\n').filter(l=>l.trim()).slice(0,5);
+  const stepsHtml = reasoningLines.map((l,i) => `
+    <div class="step" style="animation-delay:${i*.05}s">
+      <div class="step-num">${i+1}</div>
+      <div class="step-text">${esc(l.trim())}</div>
+    </div>`).join('');
+
+  const flagsHtml = (data.flags||[]).map((f,i) => `
+    <div class="flag flag-${f.severity}" style="animation-delay:${i*.06}s">
+      <div class="flag-icon">${f.severity==='critical'?'⛔':'⚠'}</div>
+      <div>
+        <div class="flag-text">${esc(f.message)}</div>
+        <div class="flag-sev ${f.severity}">${f.severity.toUpperCase()}</div>
+      </div>
+    </div>`).join('');
+
+  let execHtml = '';
+  if (!isBlocked && !isReview && data.execution_result) {
+    execHtml = formatExecResult(data.execution_result, data.action_name);
+  }
+
+  document.getElementById('result-panel').innerHTML = `
+    <div class="verdict-bar">
+      <div class="vi ${iCls}">${icon}</div>
+      <div style="flex:1">
+        <div class="vl ${vCls}">${vText}</div>
+        <div class="vsub">${esc(data.explanation||'')}</div>
+      </div>
+      <div class="risk-num" style="color:${riskColor}">${Math.round(data.risk_score*100)}%</div>
+    </div>
+    <div class="real-action-box">
+      <div class="rab-label">Real file operation ${isBlocked?'(INTERCEPTED — never ran)':isReview?'(PAUSED — waiting for decision)':'(EXECUTED — actually happened)'}</div>
+      <div class="rab-action">${esc(data.real_action||'')}</div>
+      <div class="rab-proof">${esc(data.execution_proof||'')}</div>
+    </div>
+    <div class="result-body">
+      <div class="rs"><div class="rs-label">Task</div><div class="rs-box task-box">${esc(data.task)}</div></div>
+      ${stepsHtml ? `<div class="rs"><div class="rs-label">Ollama's reasoning</div><div class="steps">${stepsHtml}</div></div>` : ''}
+      ${data.flags&&data.flags.length ? `<div class="rs"><div class="rs-label">⚑ Flags detected by AgentWatch</div><div class="flags">${flagsHtml}</div></div>` : ''}
+      <div class="rs">
+        <div class="rs-label">${isBlocked?'Result — BLOCKED (files untouched)':isReview?'Result — PAUSED (awaiting your decision)':'Result — EXECUTED (real output)'}</div>
+        ${isBlocked
+          ? `<div class="rs-box blocked-box">⛔ BLOCKED BY AGENTWATCH\n\nOperation intercepted before execution.\nOpen File Explorer to verify your files are untouched:\n${esc(data.workspace||'Desktop/AgentWatch_Workspace')}</div>`
+          : isReview
+          ? `<div id="review-box"></div>`
+          : execHtml || `<div class="rs-box">${esc(JSON.stringify(data.execution_result,null,2))}</div>`}
+      </div>
+      <div class="feedback-row">
+        <div class="fb-label">Was AgentWatch correct?</div>
+        <button class="btn-fb-y" onclick="sendFeedback(true)">✓ Yes</button>
+        <button class="btn-fb-n" onclick="sendFeedback(false)">✗ False alarm</button>
+      </div>
+    </div>`;
+
+  if (isReview) {
+    setTimeout(() => {
+      const box = document.getElementById('review-box');
+      if (box) box.innerHTML = `
+        <div class="review-actions">
+          <div class="review-msg">⚠ Action paused — files unchanged.<br>Do you want to proceed?</div>
+          <button class="btn-approve" onclick="approveAction()">✓ Approve</button>
+          <button class="btn-reject" onclick="rejectAction()">✗ Reject</button>
+        </div>`;
+    }, 100);
+  }
+}
+
+function formatExecResult(result, actionName) {
+  if (!result) return '';
+  if (actionName === 'list_files' && result.files) {
+    const rows = result.files.map(f =>
+      `<tr><td>${esc(f.name)}</td><td style="color:var(--muted)">${(f.size_bytes/1024).toFixed(1)} KB</td><td style="color:var(--muted)">${esc(f.modified)}</td></tr>`
+    ).join('');
+    return `<div class="exec-result"><table><tr><th>File</th><th>Size</th><th>Modified</th></tr>${rows}<tr><td colspan="3" style="color:var(--green);padding-top:8px">Total: ${result.total_files} files</td></tr></table></div>`;
+  }
+  if (actionName === 'read_file' && result.content) {
+    return `<div class="exec-result">${esc(result.content.substring(0,1000))}${result.content.length>1000?'\n...(truncated)':''}</div>`;
+  }
+  if (actionName === 'search_in_files' && result.found_in) {
+    if (!result.found_in.length) return `<div class="exec-result">No matches for "${esc(result.keyword)}" in ${result.files_searched} files.</div>`;
+    const matches = result.found_in.map(r =>
+      `📄 ${esc(r.file)}:\n${r.matching_lines.map(l=>'   '+esc(l.trim())).join('\n')}`
+    ).join('\n\n');
+    return `<div class="exec-result">Found in ${result.found_in.length} file(s):\n\n${matches}</div>`;
+  }
+  return `<div class="exec-result">${esc(JSON.stringify(result,null,2))}</div>`;
+}
+
+function showError(msg, hint) {
+  document.getElementById('result-panel').innerHTML = `
+    <div class="result-empty">
+      <div class="re-icon">⚠</div>
+      <div class="re-title" style="color:var(--red)">Error</div>
+      <div class="re-sub">${esc(msg)}</div>
+      ${hint ? `<div class="re-sub" style="color:var(--muted);font-family:var(--mono);font-size:10px;margin-top:8px">${esc(hint)}</div>` : ''}
+    </div>`;
+}
+
+function updateStats(data) {
+  localStats.total++;
+  if (data.blocked) localStats.blocked++;
+  else if (data.decision === 'REVIEW') localStats.flagged++;
+  else localStats.allowed++;
+}
+
+function addHistory(data) {
+  localHistory.unshift({
+    task: data.task.substring(0,80), decision: data.decision,
+    risk_level: data.risk_level, risk_score: data.risk_score,
+    blocked: data.blocked, real_action: data.real_action,
+    timestamp: new Date().toLocaleTimeString(),
+    flags: (data.flags||[]).slice(0,1).map(f=>f.message),
+  });
+  if (localHistory.length > 50) localHistory.pop();
+}
+
+async function refreshHistory() {
+  document.getElementById('h-total').textContent = localStats.total;
+  document.getElementById('h-blocked').textContent = localStats.blocked;
+  document.getElementById('h-flagged').textContent = localStats.flagged;
+  document.getElementById('h-allowed').textContent = localStats.allowed;
+  let items = localHistory;
+  try {
+    const res = await fetch(API+'/api/history');
+    if (res.ok) { const d = await res.json(); if (d.length) items = d; }
+  } catch(e) {}
+  const feed = document.getElementById('hfeed');
+  if (!items.length) { feed.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:3rem">No tasks yet.</div>'; return; }
+  feed.innerHTML = items.map(item => {
+    const pc = item.blocked ? 'hp-b' : item.decision==='REVIEW' ? 'hp-r' : 'hp-a';
+    return `<div class="hitem">
+      <div class="hitem-top">
+        <span class="hpill ${pc}">${item.blocked?'BLOCKED':item.decision}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${Math.round((item.risk_score||0)*100)}%</span>
+        <span class="htime">${item.timestamp||''}</span>
+      </div>
+      <div class="htask">${esc(item.task||'')}</div>
+      ${item.real_action ? `<div class="haction">→ ${esc(item.real_action)}</div>` : ''}
+      ${item.flags&&item.flags[0] ? `<div class="hflag">⚑ ${esc(item.flags[0])}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function sendFeedback(correct) {
+  if (!currentTaskId) { toast('Submit a task first','var(--amber)'); return; }
+  try {
+    await fetch(API+'/api/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({task_id:currentTaskId, was_correct:correct})
+    });
+  } catch(e) {}
+  toast(correct?'✓ Feedback recorded':'✗ False alarm noted', correct?'var(--green)':'var(--amber)');
+}
+
+async function approveAction() {
+  if (!window.pendingReviewData) return;
+  try {
+    await fetch(API+'/api/approve', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({task_id:window.pendingReviewData})
+    });
+    document.getElementById('review-box').innerHTML = `<div style="color:var(--green);font-family:var(--mono);font-size:12px;padding:10px 0">✓ APPROVED — Action executed. Check File Explorer.</div>`;
+    await loadWorkspace();
+    toast('✓ Action approved and executed','var(--green)');
+  } catch(e) { toast('Error approving action','var(--red)'); }
+}
+
+function rejectAction() {
+  window.pendingReviewData = null;
+  document.getElementById('review-box').innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:12px;padding:10px 0">✗ REJECTED — Action cancelled. Files unchanged.</div>`;
+  toast('✗ Action rejected — files safe','var(--red)');
+}
+
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toast(msg, color) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.color = color||'var(--text)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── VOICE INPUT ───────────────────────────────────────────────────
+// Self-contained. If browser doesn't support it, falls back silently.
+// Does NOT affect any backend or existing functionality.
+
+(function() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById('btn-mic');
+  const hint = document.getElementById('mic-hint');
+
+  if (!SR) {
+    // Browser doesn't support voice — hide button, everything else works normally
+    if (btn) btn.style.display = 'none';
+    if (hint) hint.textContent = 'Type your task above';
+    return;
+  }
+
+  let rec = null;
+  let listening = false;
+
+  function buildRecogniser() {
+    const r = new SR();
+    r.continuous = false;
+    r.interimResults = true;
+    r.lang = 'en-US';
+
+    r.onstart = function() {
+      listening = true;
+      if (btn)  { btn.textContent = '⏹'; btn.classList.add('listening'); }
+      if (hint) { hint.textContent = 'Listening... speak now'; hint.classList.add('active'); }
+    };
+
+    r.onresult = function(e) {
+      let transcript = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      const inp = document.getElementById('task-input');
+      if (inp) inp.value = transcript;
+
+      if (e.results[e.results.length - 1].isFinal) {
+        stopListening();
+        if (hint) hint.textContent = '✓ Got it — submitting...';
+        setTimeout(function() { submitTask(); }, 400);
+      }
+    };
+
+    r.onerror = function(e) {
+      stopListening();
+      if (e.error === 'not-allowed') {
+        if (hint) hint.textContent = 'Mic blocked — allow in browser settings';
+      } else if (e.error === 'no-speech') {
+        if (hint) hint.textContent = 'No speech detected — try again';
+      } else {
+        if (hint) hint.textContent = 'Click 🎤 to speak';
+      }
+    };
+
+    r.onend = function() { stopListening(); };
+
+    return r;
+  }
+
+  function stopListening() {
+    listening = false;
+    if (btn)  { btn.textContent = '🎤'; btn.classList.remove('listening'); }
+    if (hint) { hint.textContent = 'Click 🎤 to speak your task'; hint.classList.remove('active'); }
+  }
+
+  window.toggleMic = function() {
+    if (listening) {
+      if (rec) rec.stop();
+      stopListening();
+      return;
+    }
+    try {
+      rec = buildRecogniser();
+      rec.start();
+    } catch(err) {
+      stopListening();
+      if (hint) hint.textContent = 'Could not start mic — try again';
+    }
+  };
+
+// ── VOICE OUTPUT ──────────────────────────────────────────────────
+// Speaks the result after AgentWatch makes a decision.
+// Mute button in bottom-right corner to silence it.
+
+  let muted = false;
+
+  function speak(text, urgent) {
+    if (muted || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate   = urgent ? 0.85 : 0.95;
+    u.pitch  = urgent ? 0.75 : 1.0;
+    u.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const pick = voices.find(function(v) {
+      return v.lang === 'en-US' || v.name.includes('Google') || v.name.includes('Samantha');
+    });
+    if (pick) u.voice = pick;
+    window.speechSynthesis.speak(u);
+  }
+
+  // Hook into submitTask result — call this after renderResult
+  const _orig = window.renderResult;
+  window.renderResult = function(data) {
+    _orig(data);
+    const task = (data.task || '').substring(0, 50);
+    if (data.blocked) {
+      speak(
+        'Warning. AgentWatch has blocked this action. ' +
+        'The agent was about to ' + task + '. ' +
+        'Critical risk detected. Files are safe.',
+        true
+      );
+    } else if (data.decision === 'REVIEW') {
+      speak(
+        'AgentWatch has flagged this action for review. ' +
+        'Risk score ' + Math.round((data.risk_score||0)*100) + ' percent. ' +
+        'Files are unchanged. Your decision is required.'
+      );
+    } else {
+      speak(
+        'Action approved. Risk score ' + Math.round((data.risk_score||0)*100) + ' percent. ' +
+        'Executing now.'
+      );
+    }
+  };
+
+  // Mute button
+  const muteBtn = document.createElement('button');
+  muteBtn.id = 'mute-btn';
+  muteBtn.title = 'Toggle AgentWatch voice';
+  muteBtn.textContent = '🔊';
+  muteBtn.style.cssText = [
+    'position:fixed','bottom:20px','right:20px',
+    'width:38px','height:38px','border-radius:50%',
+    'background:var(--surface2)','border:1px solid rgba(255,255,255,0.10)',
+    'display:flex','align-items:center','justify-content:center',
+    'cursor:pointer','font-size:15px','z-index:100','transition:all .2s'
+  ].join(';');
+  muteBtn.onclick = function() {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.style.opacity = muted ? '0.5' : '1';
+    if (muted) window.speechSynthesis.cancel();
+    toast(muted ? '🔇 Voice muted' : '🔊 Voice on', 'var(--muted2)');
+  };
+  document.body.appendChild(muteBtn);
+
+  // Preload voices
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = function() {
+      window.speechSynthesis.getVoices();
+    };
+  }
+
+})();
+
+</script>
+</body>
+</html>
