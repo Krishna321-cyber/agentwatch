@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: agentwatch
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend.py
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PORT
+        value: 8000
